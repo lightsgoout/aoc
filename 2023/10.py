@@ -1,4 +1,5 @@
 import sys
+from pprint import pprint
 
 
 def parse():
@@ -54,8 +55,16 @@ def get_start(g):
                             connections.append((direction, g[y2][x2]))
                         if direction == 'W' and g[y2][x2] in ('-', 'L', 'F'):
                             connections.append((direction, g[y2][x2]))
+
                 assert len(connections) == 2
-                return start, connections
+                shape = {
+                    'NE': '7',
+                    'NW': 'F',
+                    'ES': 'F',
+                    'SW': 'L',
+                }[''.join([d for d, _ in connections])]
+
+                return start, shape, connections
 
 
 valid_segments = {
@@ -134,9 +143,23 @@ def next_pipe(g, p, visited):
                 return y, x
 
 
+import subprocess
+
+
+def polygon_check(p, pipe):
+    solution = (
+        "select st_contains(st_makepolygon(st_geomfromtext('LINESTRING({points})')), st_geomfromtext('point({point})'));"
+    ).format(
+        points=','.join([f'{y} {x}' for (y, x) in [*pipe, pipe[0]]]),
+        point='{} {}'.format(p[0], p[1]),
+    )
+    output = subprocess.check_output(f"psql -c \"{solution}\"", shell=True)
+    return b'\n f\n' in output
+
+
 def solve(g):
-    start, connections = get_start(g)
-    # print(f'{start=} {connections=}')
+    start, shape, connections = get_start(g)
+    print(f'{start=} {shape=} {connections=}')
     for direction, symbol in connections:
         valid_segments['S'][direction] = symbol
         valid_segments[symbol][opposite(direction)].add('S')
@@ -150,220 +173,54 @@ def solve(g):
         pipe.append(n)
 
     print('silver: ', int(len(pipe) / 2))
+    sy, sx = start
+    g[sy][sx] = shape
 
-    pipe = set(pipe)
+    pipe_set = set(pipe)
 
+    for y in range(len(g)):
+        for x in range(len(g[0])):
+            if (y, x) in pipe_set:
+                continue
+            g[y][x] = 'G'
+
+    escapes = set()
     for y in range(len(g)):
         for x in range(len(g[0])):
             if (y, x) in pipe:
                 continue
-            g[y][x] = 'G'
 
-    enclosed = set()
-    for y in range(len(g)):
-        for x in range(len(g[0])):
-            if g[y][x] == 'G':
-                garbage = [(y, x)]
-                visited = set(garbage)
-                while True:
-                    n = next_pipe(g, garbage[-1], visited)
-                    if n is None:
-                        break
-                    garbage.append(n)
-                    visited.add(n)
-
-                if any([y == 0 or y == len(g) - 1 or x == 0 or x == len(g[0]) - 1 for y, x in garbage]):
-                    # escaped
-                    pass
-                else:
-                    enclosed = enclosed.union(visited)
-
-    validate = set()
-    for y in range(len(g)):
-        for x in range(len(g[0])):
-            p = (y, x)
-            if p in pipe:
-                c = g[y][x]
-            elif p in enclosed:
-                c = 'I'
-                validate.add(p)
-            else:
-                c = 'O'
-            g[y][x] = c
-
-    # merge
-    removes = set()
-    while True:
-        changes = 0
-        validate = validate.difference(removes)
-        for p in validate:
-            y, x = p
-            for dy in [-1, 0, 1]:
-                for dx in [-1, 0, 1]:
-                    if (dy, dx) == (0, 0):
-                        continue
-
-                    yy = y + dy
-                    xx = x + dx
-                    if yy < 0 or xx > len(g[0]) - 1 or yy > len(g) - 1 or xx < 0:
-                        continue
-
-                    if g[yy][xx] == 'O':
-                        g[y][x] = 'O'
-                        changes += 1
-                        removes.add(p)
-
-        if not changes:
-            break
-
-    for y in range(len(g)):
-        row = ''
-        for x in range(len(g[0])):
-            row += g[y][x]
-        print(row)
-
-    validate = set()
-    for y in range(len(g)):
-        for x in range(len(g[0])):
-            if g[y][x] == 'I':
-                validate.add((y, x))
-
-    # validate = {(6, 6)}
-    escaped = set()
-    while validate:
-        # p = sorted(list(validate), key=lambda pp: (pp[1], pp[0]))[0]
-        # validate.remove(p)
-        p = validate.pop()
-        y, x = p
-        seen = {(*p, '')}
-        print(f'validating {p} remain={len(validate)}')
-        res = escape(g, p, seen)
-        # print(f'{p} escapes={res}')
-        if res:
-            # print(f'{p=} escapes')
-            # g[y][x] = 'O'
-            escaped.add(p)
-
-    for y in range(len(g)):
-        row = ''
-        for x in range(len(g[0])):
-            if (y, x) in escaped:
-                g[y][x] = 'O'
-            row += g[y][x]
-        print(row)
+            if polygon_check((y, x), pipe):
+                escapes.add((y, x))
 
     enclosed = 0
     for y in range(len(g)):
         for x in range(len(g[0])):
-            if g[y][x] == 'I':
+            if (y, x) in escapes:
+                g[y][x] = 'O'
+            elif (y, x) not in pipe:
+                g[y][x] = 'I'
                 enclosed += 1
-    print('gold: ', enclosed)
-    # dump_grid(g)
+
+    # dump_grid(g, pipe, True)
+    # print()
+    # dump_grid(g, pipe, False)
+
+    print('gold:', enclosed)
 
 
-def dump_grid(g):
+def dump_grid(g, pipe, as_pipe=False):
     for y in range(len(g)):
         row = ''
         for x in range(len(g[0])):
             c = g[y][x]
-            if c not in ('I', 'O'):
+            if as_pipe and (y, x) in pipe:
                 c = 'P'
             row += c
         print(row)
 
 
-def escape(g, p, seen):
-    py, px = p
-    for dy in [-1, 0, 1]:
-        for dx in [-1, 0, 1]:
-            if (dy, dx) == (0, 0):
-                continue
-
-            y = py + dy
-            x = px + dx
-            if y < 0 or x > len(g[0]) - 1 or y > len(g) - 1 or x < 0:
-                continue
-
-            # print(f'im in {y=} {x=}')
-
-            dm = {
-                'W': y == py and x < px,
-                'N': y < py and x == px,
-                'S': y > py and x == px,
-                'E': y == py and x > px,
-            }
-            direction = None
-            for d, v in dm.items():
-                if v:
-                    direction = d
-                    break
-            if not direction:
-                continue
-
-            if (y, x, direction) in seen:
-                continue
-
-            seen.add((y, x, direction))
-            if g[y][x] == 'I' and g[py][px] == 'I':
-                # print(f'passing to {y},{x}')
-                # return escape(g, (y, x), seen)
-                if escape(g, (y, x), seen):
-                    print(f'{py},{px} escapes through I at {y},{x}')
-                    return True
-
-            # print(f'checking {y},{x}={g[y][x]} {direction=}')
-
-            prev = g[py][px]
-            v = g[y][x]
-            if v == 'O':
-                if direction == 'N' and prev not in ['-']:
-                    print(f'N escaped: {y}, {x} {v=}')
-                    return True
-                if direction == 'S' and prev not in ['-']:
-                    print(f'S escaped: {y}, {x} {v=}')
-                    return True
-                if direction == 'E' and prev not in ['|']:
-                    print(f'E escaped: {y}, {x} {v=}')
-                    return True
-                if direction == 'W' and prev not in ['|']:
-                    print(f'W escaped: {y}, {x} {v=}')
-                    return True
-
-            escapes = {}
-            through = None
-            if direction in ('N', 'S'):
-                if v in ('F', 'L', '|') and x > 0 and g[y][x - 1] in ('|', 'J', '7'):
-                    through = (y, x - 1)
-                    assert direction not in escapes
-                    escapes[direction] = escape(g, (y, x - 1), seen)
-                if v in ('|', 'J', '7') and x < len(g[0]) - 1 and g[y][x + 1] in ('|', 'F', 'L'):
-                    through = (y, x + 1)
-                    assert direction not in escapes
-                    escapes[direction] = escape(g, (y, x + 1), seen)
-            elif direction in ('E', 'W'):
-                if v in ('J', 'L', '-') and y < len(g) - 1 and g[y + 1][x] in ('-', '7', 'F'):
-                    through = (y + 1, x)
-                    assert direction not in escapes
-                    escapes[direction] = escape(g, (y + 1, x), seen)
-                if v in ('F', '7', '-') and y > 0 and g[y - 1][x] in ('-', 'J', 'L'):
-                    through = (y - 1, x)
-                    assert direction not in escapes
-                    escapes[direction] = escape(g, (y - 1, x), seen)
-
-            if any(escapes.values()):
-                ty, tx = through
-                assert len(escapes.values()) == 1
-                print(
-                    f'{py},{px}({g[py][px]}) escapes through {y},{x}({g[y][x]}) through {through}({g[ty][tx]}) {direction=}:'
-                )
-                # print(f'{y},{x} = {v}: {escapes=} {through=} {direction=} {prev=} ({py},{px})')
-                return True
-
-    return False
-
-
 def main():
-    sys.setrecursionlimit(100000)
     g = parse()
     solve(g)
 

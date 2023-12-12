@@ -26,7 +26,7 @@ def dump_grid(g):
 
 
 def rotated(g):
-    return [list(l) for l in zip(*g)]
+    return list(zip(*g))
 
 
 def manhattan(y1, x1, y2, x2):

@@ -1,4 +1,5 @@
 import sys
+from copy import deepcopy
 
 
 def parse():
@@ -49,6 +50,30 @@ def reflection(g):
     return 0
 
 
+def multi_reflection(g):
+    result = []
+    for x in range(len(g[0])):
+        valid = True
+        for y, row in enumerate(g):
+            left, right = row[:x], row[x:]
+            m = min(len(left), len(right))
+            if m == 0:
+                valid = False
+                break
+
+            left = list(reversed(list(reversed(left))[:m]))
+            right = right[:m]
+
+            if left != list(reversed(right)):
+                valid = False
+                break
+
+        if valid:
+            result.append(x)
+
+    return result
+
+
 def silver(data):
     vert = 0
     horiz = 0
@@ -59,8 +84,36 @@ def silver(data):
     return vert + 100 * horiz
 
 
+def alternate(g):
+    v, h = reflection(g), reflection(rotated(g))
+    for y, row in enumerate(g):
+        for x, c in enumerate(row):
+            ag = deepcopy(g)
+            ag[y][x] = '.' if c == '#' else '#'
+
+            for alt_v in multi_reflection(ag):
+                if alt_v != 0 and alt_v != v:
+                    return alt_v, 0
+
+            for alt_h in multi_reflection(rotated(ag)):
+                if alt_h != 0 and alt_h != h:
+                    return 0, alt_h
+
+    print('falling back')
+    return v, h
+
+
 def gold(data):
-    return 0
+    vert = 0
+    horiz = 0
+    for i, g in enumerate(data):
+        print('pattern ', i)
+        dump_grid(g)
+        v, h = alternate(g)
+        vert += v
+        horiz += h
+
+    return vert + 100 * horiz
 
 
 def dump_grid(g):

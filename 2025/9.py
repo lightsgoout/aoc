@@ -66,12 +66,7 @@ def gold(lines):
     cur = conn.cursor()
 
     best = 0
-    iters = 0
     for a, b, _ in sorted(flat, key=lambda k: k[2], reverse=True):
-        iters += 1
-        if iters % 1000 == 0:
-            print(f"{iters=} {best=}")
-
         h = abs(a[0] - b[0]) + 1
         w = abs(a[1] - b[1]) + 1
         if h * w > best:
@@ -82,7 +77,6 @@ def gold(lines):
                 continue
 
             best = h * w
-            print(f"new {best=}")
 
     return best
 

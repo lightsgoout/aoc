@@ -17,14 +17,11 @@ def silver(lines):
 
 def gold(lines):
     g = nx.DiGraph()
-    nodes = set()
     for line in lines:
         src, dsts = line.split(":")
         for dst in dsts.split():
             dst = dst.strip()
             g.add_edge(src, dst)
-            nodes.add(dst)
-            nodes.add(src)
 
     res = solve(g, "svr", "out")
     return res

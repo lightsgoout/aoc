@@ -23,8 +23,7 @@ def gold(lines):
             dst = dst.strip()
             g.add_edge(src, dst)
 
-    res = solve(g, "svr", "out")
-    return res
+    return solve(g, "svr", "out")
 
 
 @functools.cache

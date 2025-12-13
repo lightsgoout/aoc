@@ -53,6 +53,9 @@ class grid:
     def __setitem__(self, p: point, value):
         self.g[p.y][p.x] = value
 
+    def __hash__(self):
+        return hash(tuple([self[p] for p in self]))
+
     def inside(self, p: point):
         return not (p.y < 0 or p.y > self.max_y or p.x < 0 or p.x > self.max_x)
 
